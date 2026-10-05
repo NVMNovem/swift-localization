@@ -25,14 +25,21 @@ and instructions are out of scope unless the user explicitly expands the task.
 
 ## Current package state
 
-The package targets Swift 6.4 and currently contains:
+The package requires SwiftPM 6.3 or later (`swift-tools-version: 6.3`) and
+currently contains:
 
 - `SwiftLocalization`: the runtime library product. Standard library only.
 - `SwiftLocalizationXCStrings`: the `.xcstrings` frontend, an internal
   Foundation-free target used by the generator.
 - `SwiftLocalizationGeneratorCore` and `SwiftLocalizationGenerator`: the
-  deterministic Swift emitter and the executable that wraps it.
+  deterministic Swift emitter and command logic, and the thin executable
+  that wraps them.
 - `SwiftLocalizationPlugin`: the build-tool plugin product.
+- `Tests/Fixtures`: the shared `.xcstrings` fixture and `PluginConsumer`, a
+  package template the integration tests build with the real plugin in a
+  temporary directory. Do not apply the plugin to a target of this package:
+  that makes every build of the package, including a cross-compiled runtime,
+  build the host generator.
 - `Tools/CLDRPluralGenerator`: a separate, maintainer-only package that
   regenerates the checked-in CLDR plural tables from pinned data. It must
   never become a target of this package or run during a consumer build.

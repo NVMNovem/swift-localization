@@ -167,8 +167,31 @@ Copyright © Unicode, Inc. and used under the
 
 ## Development
 
+The package requires SwiftPM 6.3 or later.
+
 ```console
 swift package describe
 swift build
 swift test
 ```
+
+`swift test` includes integration tests that run the real generator
+executable and build `Tests/Fixtures/PluginConsumer` with the real plugin.
+The fixture is copied to a temporary directory and built there by a nested
+`swift build` of the toolchain running the tests, offline, in about fifteen
+seconds. No target of this package applies the plugin to itself, so building
+the runtime alone, including a cross-compiled
+`swift build --swift-sdk <sdk> --target SwiftLocalization`, never builds the
+host generator.
+
+A Swift SDK must be used with the compiler it was built for. With swiftly, a
+toolchain is selected per command:
+
+```console
+swiftly run swift build --swift-sdk swift-6.3.3-RELEASE_wasm --target SwiftLocalization +6.3.3
+```
+
+On macOS, an open-source toolchain older than the installed Xcode may not be
+able to import that Xcode's Foundation. Host builds and tests then need an
+SDK the toolchain understands, selected with `SDKROOT`; the WebAssembly build
+of the runtime does not, because it imports nothing from the host.
