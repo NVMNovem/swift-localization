@@ -1,0 +1,23 @@
+// swift-tools-version: 6.3
+
+import PackageDescription
+
+// Template for the plugin integration tests. The tests copy this fixture to a
+// temporary directory and replace @SWIFT_LOCALIZATION_PATH@ with the path of
+// the repository under test. It is not a package until then.
+let package = Package(
+    name: "PluginConsumer",
+    dependencies: [.package(name: "swift-localization", path: "@SWIFT_LOCALIZATION_PATH@")],
+    targets: [
+        .executableTarget(
+            name: "Distinct",
+            dependencies: [.product(name: "SwiftLocalization", package: "swift-localization")],
+            plugins: [.plugin(name: "SwiftLocalizationPlugin", package: "swift-localization")]
+        ),
+        .target(
+            name: "Colliding",
+            dependencies: [.product(name: "SwiftLocalization", package: "swift-localization")],
+            plugins: [.plugin(name: "SwiftLocalizationPlugin", package: "swift-localization")]
+        ),
+    ]
+)

@@ -4,19 +4,25 @@ import SwiftLocalizationGeneratorCore
 import SwiftLocalizationXCStrings
 import Testing
 
-/// The catalog the plugin test target compiles; shared so the fixtures stay in one place.
-private let fixture: String = {
+/// The catalog shared by the decoding, resolution, and plugin integration tests.
+func localizableFixture() throws -> String {
     let url = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent().deletingLastPathComponent()
-        .appendingPathComponent("SwiftLocalizationPluginTests/Localizable.xcstrings")
-    return try! String(contentsOf: url, encoding: .utf8)
-}()
+        .appendingPathComponent("Fixtures/Localizable.xcstrings")
+    return try String(contentsOf: url, encoding: .utf8)
+}
 
 private func minimal(strings: String, version: String = "1.0") -> String {
     #"{"sourceLanguage":"en","strings":{\#(strings)},"version":"\#(version)"}"#
 }
 
 @Suite struct XCStringsDecodingTests {
+    let fixture: String
+
+    init() throws {
+        fixture = try localizableFixture()
+    }
+
     @Test func decodesTheSupportedSchema() throws {
         let catalog = try XCStringsDocument(parsing: fixture).catalog()
         #expect(catalog.sourceLanguage == "en")
@@ -73,6 +79,12 @@ private func minimal(strings: String, version: String = "1.0") -> String {
 }
 
 @Suite struct XCStringsRoundTripTests {
+    let fixture: String
+
+    init() throws {
+        fixture = try localizableFixture()
+    }
+
     @Test func unchangedDocumentRoundTripsByteForByte() throws {
         #expect(try XCStringsDocument(parsing: fixture).serialized() == fixture)
         #expect(try XCStringsDocument(parsing: fixture + "\n").serialized() == fixture + "\n")
@@ -131,6 +143,12 @@ private func minimal(strings: String, version: String = "1.0") -> String {
 }
 
 @Suite struct SwiftCatalogEmitterTests {
+    let fixture: String
+
+    init() throws {
+        fixture = try localizableFixture()
+    }
+
     @Test func outputIsDeterministic() throws {
         let emitter = try SwiftCatalogEmitter(propertyName: "localizable", sourceFileName: "Localizable.xcstrings")
         let first = emitter.emit(try XCStringsDocument(parsing: fixture).catalog())

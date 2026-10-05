@@ -1,17 +1,23 @@
+import Foundation
 import SwiftLocalization
+import SwiftLocalizationXCStrings
 import Testing
 
-// `LocalizationCatalog.localizable` is generated from Localizable.xcstrings by
-// SwiftLocalizationPlugin while this target builds.
+/// Resolution against the catalog decoded from Tests/Fixtures/Localizable.xcstrings.
+/// The integration tests check that the plugin-generated form of the same
+/// catalog resolves identically.
+@Suite struct CatalogResolutionTests {
+    let resolver: LocalizationResolver
 
-@Suite struct PluginTests {
-    let resolver = LocalizationResolver(catalog: .localizable)
+    init() throws {
+        resolver = LocalizationResolver(catalog: try XCStringsDocument(parsing: localizableFixture()).catalog())
+    }
 
     private func itemCount(_ count: Int) -> LocalizedResource { "\(count) items" }
 
-    @Test func generatedCatalogHasEveryKey() {
-        #expect(LocalizationCatalog.localizable.sourceLanguage == "en")
-        #expect(LocalizationCatalog.localizable.entries.keys.sorted() == [
+    @Test func catalogHasEveryKey() {
+        #expect(resolver.catalog.sourceLanguage == "en")
+        #expect(resolver.catalog.entries.keys.sorted() == [
             "%.1f km", "%@ owes %@", "%lld files in %lld folders", "%lld items",
             "Progress: 100%", "Untranslated", "cart.title", "device.hint",
         ])
