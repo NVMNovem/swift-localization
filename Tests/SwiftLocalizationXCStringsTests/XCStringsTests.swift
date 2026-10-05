@@ -132,7 +132,7 @@ private func minimal(strings: String, version: String = "1.0") -> String {
 
 @Suite struct SwiftCatalogEmitterTests {
     @Test func outputIsDeterministic() throws {
-        let emitter = SwiftCatalogEmitter(propertyName: "localizable", sourceFileName: "Localizable.xcstrings")
+        let emitter = try SwiftCatalogEmitter(propertyName: "localizable", sourceFileName: "Localizable.xcstrings")
         let first = emitter.emit(try XCStringsDocument(parsing: fixture).catalog())
         // A second, independently built catalog has differently seeded dictionaries.
         var copy = LocalizationCatalog(sourceLanguage: "en")
@@ -149,12 +149,79 @@ private func minimal(strings: String, version: String = "1.0") -> String {
         #expect(sortedKeys == sortedKeys.sorted { $0.utf8.lexicographicallyPrecedes($1.utf8) })
     }
 
-    @Test func derivesPropertyNames() {
-        #expect(SwiftCatalogEmitter.propertyName(forFileName: "Localizable.xcstrings") == "localizable")
-        #expect(SwiftCatalogEmitter.propertyName(forFileName: "In-App Purchases.xcstrings") == "inAppPurchases")
-        #expect(SwiftCatalogEmitter.propertyName(forFileName: "2fa.xcstrings") == "_2fa")
-        #expect(SwiftCatalogEmitter.propertyName(forFileName: ".xcstrings") == "catalog")
-        let emitter = SwiftCatalogEmitter(propertyName: "default", sourceFileName: "Default.xcstrings", accessLevel: "public")
+    @Test(arguments: [
+        ("Localizable.xcstrings", "localizable"),
+        ("In-App Purchases.xcstrings", "inAppPurchases"),
+        ("Foo-Bar.xcstrings", "fooBar"),
+        ("Foo Bar.xcstrings", "fooBar"),
+        ("Foo.Bar.xcstrings", "fooBar"),
+        ("Foo.xcstrings", "foo"),
+        ("settings.v2.final.xcstrings", "settingsV2Final"),
+        ("snake_case.xcstrings", "snake_case"),
+        ("NoExtension", "noExtension"),
+        ("default.xcstrings", "default"),
+        ("Class.xcstrings", "class"),
+        ("2fa.xcstrings", "_2fa"),
+        ("123.xcstrings", "_123"),
+        ("Überschrift.xcstrings", "überschrift"),
+        (".xcstrings", "catalog"),
+        ("---.xcstrings", "catalog"),
+    ])
+    func derivesPropertyNames(fileName: String, expected: String) {
+        let name = SwiftCatalogEmitter.propertyName(forFileName: fileName)
+        #expect(name == expected)
+        #expect(SwiftCatalogEmitter.isValidPropertyName(name))
+    }
+
+    @Test func writesReservedWordsInBackticks() throws {
+        let emitter = try SwiftCatalogEmitter(propertyName: "default", sourceFileName: "Default.xcstrings", accessLevel: "public")
         #expect(emitter.emit(LocalizationCatalog(sourceLanguage: "en")).contains("public static let `default`: LocalizationCatalog"))
+        let plain = try SwiftCatalogEmitter(propertyName: "_2fa", sourceFileName: "2fa.xcstrings")
+        #expect(plain.emit(LocalizationCatalog(sourceLanguage: "en")).contains("    static let _2fa: LocalizationCatalog"))
+    }
+
+    @Test func assignsDistinctAccessorsInOrder() throws {
+        let names = try SwiftCatalogEmitter.propertyNames(forCatalogs: [
+            ("a/Localizable.xcstrings", "Localizable.xcstrings"),
+            ("a/Foo-Bar.xcstrings", "Foo-Bar.xcstrings"),
+            ("a/Foo.xcstrings", "Foo.xcstrings"),
+            ("a/default.xcstrings", "default.xcstrings"),
+        ])
+        #expect(names == ["localizable", "fooBar", "foo", "default"])
+    }
+
+    @Test(arguments: [
+        ("Foo-Bar.xcstrings", "Foo Bar.xcstrings", "fooBar"),
+        ("Foo-Bar.xcstrings", "Foo.Bar.xcstrings", "fooBar"),
+        ("Foo.xcstrings", "foo.xcstrings", "foo"),
+        ("2fa.xcstrings", "_2fa.xcstrings", "_2fa"),
+        ("Localizable.xcstrings", "Localizable.xcstrings", "localizable"),
+    ])
+    func rejectsCatalogsThatShareAnAccessor(first: String, second: String, name: String) {
+        let error = #expect(throws: SwiftCatalogEmitter.NameError.self) {
+            try SwiftCatalogEmitter.propertyNames(forCatalogs: [
+                ("Sources/App/Other.xcstrings", "Other.xcstrings"),
+                ("Sources/App/\(first)", first),
+                ("Sources/App/Sub/\(second)", second),
+            ])
+        }
+        #expect(error == .collision(name: name, first: "Sources/App/\(first)", second: "Sources/App/Sub/\(second)"))
+        #expect(error?.description.contains("'Sources/App/\(first)' and 'Sources/App/Sub/\(second)'") == true)
+        #expect(error?.description.contains("LocalizationCatalog.\(name)") == true)
+    }
+
+    @Test(arguments: ["", "_", "2fa", "foo bar", "foo-bar", "foo.bar", "`default`", "foo: Int = 0; static let bar", "a\nb", "$0"])
+    func rejectsInvalidExplicitNames(name: String) {
+        #expect(!SwiftCatalogEmitter.isValidPropertyName(name))
+        #expect(throws: SwiftCatalogEmitter.NameError.invalidName(name)) {
+            try SwiftCatalogEmitter(propertyName: name, sourceFileName: "Localizable.xcstrings")
+        }
+    }
+
+    @Test(arguments: ["localizable", "_private", "default", "über", "a1_b2"])
+    func acceptsValidExplicitNames(name: String) {
+        #expect(throws: Never.self) {
+            try SwiftCatalogEmitter(propertyName: name, sourceFileName: "Localizable.xcstrings")
+        }
     }
 }

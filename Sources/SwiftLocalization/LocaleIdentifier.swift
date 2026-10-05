@@ -41,7 +41,7 @@ public struct LocaleIdentifier: Hashable, Sendable {
     ///
     /// `_` is accepted as a separator and a POSIX codeset or modifier suffix
     /// (`.UTF-8`, `@euro`) is ignored. Grandfathered and private-use-only tags
-    /// are rejected.
+    /// are rejected, as is a tag that repeats an extension singleton.
     public init?(validating identifier: String) {
         var text = Substring(identifier)
         if let end = text.firstIndex(where: { $0 == "." || $0 == "@" }) {
@@ -96,9 +96,12 @@ public struct LocaleIdentifier: Hashable, Sendable {
             index += 1
         }
 
+        // Subtags are already lowercased, so singletons compare
+        // case-insensitively. Each may appear once; `x` ends the tag.
         var extensions: [String] = []
+        var singletons: Set<String> = []
         while let singleton = peek() {
-            guard singleton.utf8.count == 1 else { return nil }
+            guard singleton.utf8.count == 1, singletons.insert(singleton).inserted else { return nil }
             let minimumLength = singleton == "x" ? 1 : 2
             extensions.append(singleton)
             index += 1
