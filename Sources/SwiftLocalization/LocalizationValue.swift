@@ -56,17 +56,53 @@ extension LocalizationValue: ExpressibleByStringInterpolation {
             arguments.append(.string(value))
         }
 
-        /// Appends an integer argument: `%lld` or `%llu`, and `%d` or `%u` for
-        /// types of at most 32 bits.
+        // Integer specifiers are chosen per type, never from the target's
+        // memory layout, so a key is the same on every architecture: `Int` is
+        // `%lld` on wasm32 exactly as it is on arm64.
+
+        /// Appends an integer argument, `%lld`.
+        public mutating func appendInterpolation(_ value: Int) { appendSigned(Int64(value), "%lld") }
+        /// Appends an integer argument, `%lld`.
+        public mutating func appendInterpolation(_ value: Int64) { appendSigned(value, "%lld") }
+        /// Appends an integer argument, `%d`.
+        public mutating func appendInterpolation(_ value: Int32) { appendSigned(Int64(value), "%d") }
+        /// Appends an integer argument, `%d`.
+        public mutating func appendInterpolation(_ value: Int16) { appendSigned(Int64(value), "%d") }
+        /// Appends an integer argument, `%d`.
+        public mutating func appendInterpolation(_ value: Int8) { appendSigned(Int64(value), "%d") }
+        /// Appends an unsigned integer argument, `%llu`.
+        public mutating func appendInterpolation(_ value: UInt) { appendUnsigned(UInt64(value), "%llu") }
+        /// Appends an unsigned integer argument, `%llu`.
+        public mutating func appendInterpolation(_ value: UInt64) { appendUnsigned(value, "%llu") }
+        /// Appends an unsigned integer argument, `%u`.
+        public mutating func appendInterpolation(_ value: UInt32) { appendUnsigned(UInt64(value), "%u") }
+        /// Appends an unsigned integer argument, `%u`.
+        public mutating func appendInterpolation(_ value: UInt16) { appendUnsigned(UInt64(value), "%u") }
+        /// Appends an unsigned integer argument, `%u`.
+        public mutating func appendInterpolation(_ value: UInt8) { appendUnsigned(UInt64(value), "%u") }
+
+        /// Appends an integer of any other type: `%lld` when the type is
+        /// signed and `%llu` when it is unsigned, on every target.
+        ///
+        /// The argument is stored as `Int64` or `UInt64`. A value outside
+        /// that range, such as a large `Int128`, is clamped to the nearest
+        /// representable value.
         public mutating func appendInterpolation<T: BinaryInteger>(_ value: T) {
-            let isWide = MemoryLayout<T>.size > 4
             if T.isSigned {
-                key += isWide ? "%lld" : "%d"
-                arguments.append(.integer(Int64(clamping: value)))
+                appendSigned(Int64(clamping: value), "%lld")
             } else {
-                key += isWide ? "%llu" : "%u"
-                arguments.append(.unsignedInteger(UInt64(clamping: value)))
+                appendUnsigned(UInt64(clamping: value), "%llu")
             }
+        }
+
+        private mutating func appendSigned(_ value: Int64, _ specifier: String) {
+            key += specifier
+            arguments.append(.integer(value))
+        }
+
+        private mutating func appendUnsigned(_ value: UInt64, _ specifier: String) {
+            key += specifier
+            arguments.append(.unsignedInteger(value))
         }
 
         /// Appends a floating-point argument, `%lf`.
@@ -89,7 +125,7 @@ extension LocalizationValue: ExpressibleByStringInterpolation {
         }
 
         /// Appends an integer argument with an explicit format specifier such
-        /// as `%2$lld`.
+        /// as `%2$lld`. Values outside `Int64` or `UInt64` are clamped.
         public mutating func appendInterpolation<T: BinaryInteger>(_ value: T, specifier: String) {
             key += specifier
             if T.isSigned {

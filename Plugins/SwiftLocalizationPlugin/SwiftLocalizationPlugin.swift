@@ -31,31 +31,42 @@ extension SwiftLocalizationPlugin: XcodeBuildToolPlugin {
 }
 #endif
 
-struct DuplicateCatalogName: Error, CustomStringConvertible {
-    var name: String
-
-    var description: String {
-        "more than one string catalog is named '\(name)'; catalog names must be unique within a target"
-    }
-}
-
 extension SwiftLocalizationPlugin {
+    /// One command generates every catalog of the target, so the generator
+    /// sees them together and can reject two catalogs that would get the same
+    /// `LocalizationCatalog` accessor. Accessor names are derived in the
+    /// generator only; the plugin does not reimplement that rule.
     func buildCommands(for files: [URL], in workDirectory: URL, with generator: URL) throws -> [Command] {
         let catalogs = files
             .filter { $0.pathExtension == "xcstrings" }
             .sorted { $0.path < $1.path }
-        var names: Set<String> = []
-        return try catalogs.map { catalog in
-            let name = catalog.deletingPathExtension().lastPathComponent
-            guard names.insert(name).inserted else { throw DuplicateCatalogName(name: catalog.lastPathComponent) }
+        guard !catalogs.isEmpty else { return [] }
+
+        // Output file names only have to be unique; they are not the accessors.
+        var usedNames: Set<String> = []
+        var arguments: [String] = []
+        var outputs: [URL] = []
+        for catalog in catalogs {
+            let stem = catalog.deletingPathExtension().lastPathComponent
+            var name = stem
+            var suffix = 2
+            while !usedNames.insert(name).inserted {
+                name = "\(stem)-\(suffix)"
+                suffix += 1
+            }
             let output = workDirectory.appendingPathComponent(name + "+LocalizationCatalog.swift")
-            return .buildCommand(
-                displayName: "Generating \(output.lastPathComponent) from \(catalog.lastPathComponent)",
-                executable: generator,
-                arguments: [catalog.path, "--output", output.path],
-                inputFiles: [catalog],
-                outputFiles: [output]
-            )
+            arguments += [catalog.path, "--output", output.path]
+            outputs.append(output)
         }
+        return [
+            .buildCommand(
+                displayName: "Generating localization catalogs from "
+                    + catalogs.map(\.lastPathComponent).joined(separator: ", "),
+                executable: generator,
+                arguments: arguments,
+                inputFiles: catalogs,
+                outputFiles: outputs
+            ),
+        ]
     }
 }

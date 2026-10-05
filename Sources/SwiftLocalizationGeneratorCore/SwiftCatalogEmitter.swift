@@ -17,27 +17,83 @@ package struct SwiftCatalogEmitter: Sendable {
     /// The access level of the generated property.
     package var accessLevel: String
 
-    package init(propertyName: String, sourceFileName: String, accessLevel: String = "internal") {
+    /// Throws when `propertyName` is not a valid Swift identifier, so that it
+    /// is never written into generated source unchecked.
+    package init(propertyName: String, sourceFileName: String, accessLevel: String = "internal") throws(NameError) {
+        guard Self.isValidPropertyName(propertyName) else { throw NameError.invalidName(propertyName) }
         self.propertyName = propertyName
         self.sourceFileName = sourceFileName
         self.accessLevel = accessLevel
     }
 
-    /// A lower-camel-case Swift identifier for a catalog file name:
-    /// `Localizable.xcstrings` becomes `localizable`, `In-App Purchases`
-    /// becomes `inAppPurchases`.
+    /// A lower-camel-case Swift identifier for a catalog file name. This is
+    /// the only place accessor names are derived.
+    ///
+    /// The last extension is dropped and every other character that cannot
+    /// be part of an identifier separates words: `Localizable.xcstrings`
+    /// becomes `localizable`, and `In-App Purchases.xcstrings` and
+    /// `In.App.Purchases.xcstrings` both become `inAppPurchases`. A name that
+    /// would start with a digit is prefixed with `_`, and an empty one is
+    /// `catalog`. Reserved words are returned as they are; ``emit(_:)``
+    /// writes them in backticks.
     package static func propertyName(forFileName fileName: String) -> String {
-        let stem = fileName.split(separator: ".", omittingEmptySubsequences: false).first.map(String.init) ?? ""
+        var stem = fileName[...]
+        if let dot = stem.lastIndex(of: ".") { stem = stem[..<dot] }
         let words = stem.unicodeScalars
-            .split { !($0.properties.isAlphabetic || $0.properties.numericType != nil || $0 == "_") }
+            .split { !$0.properties.isXIDContinue }
             .map { String(String.UnicodeScalarView($0)) }
         var name = ""
         for (offset, word) in words.enumerated() {
             name += offset == 0 ? word.prefix(1).lowercased() + word.dropFirst() : word.prefix(1).uppercased() + word.dropFirst()
         }
         if name.isEmpty { name = "catalog" }
-        if let first = name.unicodeScalars.first, first.properties.numericType != nil { name = "_" + name }
+        if !isValidPropertyName(name) { name = "_" + name }
         return name
+    }
+
+    /// Whether `name` can be written as a Swift property name: an identifier
+    /// head followed by identifier characters. Reserved words are valid
+    /// because they are emitted in backticks; `_` alone is not a name.
+    package static func isValidPropertyName(_ name: String) -> Bool {
+        guard let first = name.unicodeScalars.first, first == "_" || first.properties.isXIDStart else { return false }
+        return name != "_" && name.unicodeScalars.allSatisfy { $0.properties.isXIDContinue }
+    }
+
+    /// A problem with the name of a generated catalog accessor.
+    package enum NameError: Error, Equatable, Sendable, CustomStringConvertible {
+        case invalidName(String)
+        case collision(name: String, first: String, second: String)
+
+        package var description: String {
+            switch self {
+            case .invalidName(let name):
+                "'\(name)' is not a valid Swift identifier for a catalog accessor"
+            case .collision(let name, let first, let second):
+                "string catalogs '\(first)' and '\(second)' both generate 'LocalizationCatalog.\(name)'; "
+                    + "rename one of them so every catalog in a target has its own accessor"
+            }
+        }
+    }
+
+    /// The accessor name of each catalog, in order, or the first pair of
+    /// catalogs whose names collide.
+    ///
+    /// `fileName` is the catalog's last path component and `path` is how it
+    /// is named in a diagnostic.
+    package static func propertyNames(
+        forCatalogs catalogs: [(path: String, fileName: String)]
+    ) throws(NameError) -> [String] {
+        var owners: [String: String] = [:]
+        var names: [String] = []
+        for catalog in catalogs {
+            let name = propertyName(forFileName: catalog.fileName)
+            if let first = owners[name] {
+                throw NameError.collision(name: name, first: first, second: catalog.path)
+            }
+            owners[name] = catalog.path
+            names.append(name)
+        }
+        return names
     }
 
     package func emit(_ catalog: LocalizationCatalog) -> String {

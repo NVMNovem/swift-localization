@@ -35,6 +35,12 @@ Put `Localizable.xcstrings` in the target. The plugin generates
 `LocalizationCatalog.localizable` (the property is named after the file) in
 its work directory; the checked-in catalog is never rewritten by a build.
 
+The accessor is the file name without its extension in lower camel case, with
+every character that cannot be in an identifier treated as a word break:
+`In-App Purchases.xcstrings` becomes `inAppPurchases`. Two catalogs of one
+target that would get the same accessor, such as `Foo-Bar.xcstrings` and
+`Foo Bar.xcstrings`, fail the build with a diagnostic naming both.
+
 ```swift
 import SwiftLocalization
 
@@ -49,8 +55,11 @@ resolver.string(for: LocalizedResource("cart.count", defaultValue: "\(count) ite
 String literals and interpolations become `LocalizedResource` values through
 `ExpressibleByStringInterpolation`; no macro or wrapper is needed. As with
 `String.LocalizationValue`, `"\(count) items"` has the key `%lld items`
-(`%@` for strings, `%lf` for `Double`, `%d` / `%u` for integers of at most 32
-bits), and a literal `%` next to an interpolation is written `%%`.
+(`%@` for strings, `%lf` for `Double`), and a literal `%` next to an
+interpolation is written `%%`. Integer specifiers depend on the type only,
+never on the target: `Int` and `Int64` are `%lld`, `UInt` and `UInt64` are
+`%llu`, the 8-, 16-, and 32-bit types are `%d` or `%u`, and any other
+`BinaryInteger` is `%lld` or `%llu` with its value clamped to 64 bits.
 
 `string(for:locale:)` never fails: when the catalog cannot answer, the default
 value is formatted instead. `resolve(_:locale:)` throws a `LocalizationError`

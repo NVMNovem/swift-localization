@@ -25,6 +25,44 @@ import Testing
         ])
     }
 
+    /// Keys must not depend on the target: `Int` is `%lld` on wasm32 too.
+    @Test func integerSpecifiersDependOnTheTypeOnly() {
+        func key(_ value: LocalizationValue) -> String { value.key }
+        #expect(key("\(Int(-1))") == "%lld")
+        #expect(key("\(Int64(-1))") == "%lld")
+        #expect(key("\(Int32(-1))") == "%d")
+        #expect(key("\(Int16(-1))") == "%d")
+        #expect(key("\(Int8(-1))") == "%d")
+        #expect(key("\(UInt(1))") == "%llu")
+        #expect(key("\(UInt64(1))") == "%llu")
+        #expect(key("\(UInt32(1))") == "%u")
+        #expect(key("\(UInt16(1))") == "%u")
+        #expect(key("\(UInt8(1))") == "%u")
+        #expect(key("\(1) \(1 as UInt)") == "%lld %llu")
+
+        let values: LocalizationValue = "\(Int.min) \(Int64.max) \(Int8.min) \(UInt.max) \(UInt64.max) \(UInt16.max)"
+        #expect(values.arguments == [
+            .integer(Int64(Int.min)), .integer(.max), .integer(-128),
+            .unsignedInteger(UInt64(UInt.max)), .unsignedInteger(.max), .unsignedInteger(65535),
+        ])
+    }
+
+    @Test func otherIntegerTypesUseTheWideSpecifiersAndClamp() {
+        func value<T: BinaryInteger>(_ integer: T) -> LocalizationValue { "\(integer)" }
+        // Through the generic entry point the type alone decides, whatever its width.
+        #expect(value(Int8(-5)) == LocalizationValue(key: "%lld", arguments: [.integer(-5)]))
+        #expect(value(UInt8(5)) == LocalizationValue(key: "%llu", arguments: [.unsignedInteger(5)]))
+        #expect(value(Int(5)).key == "%lld")
+        #expect(value(UInt(5)).key == "%llu")
+    }
+
+    @Test func keySelectionDoesNotInspectMemoryLayout() throws {
+        let source = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/SwiftLocalization/LocalizationValue.swift")
+        #expect(try !String(contentsOf: source, encoding: .utf8).contains("MemoryLayout"))
+    }
+
     @Test func resourceKeepsKeyDistinctFromDefaultValue() {
         let count = 2
         let explicit = LocalizedResource("cart.count", defaultValue: "\(count) items")
@@ -51,6 +89,27 @@ import Testing
     func rejectsMalformedTags(input: String) {
         #expect(LocaleIdentifier(validating: input) == nil)
         #expect(LocaleIdentifier(input) == .undetermined)
+    }
+
+    @Test(arguments: [
+        "en-u-ca-gregory-u-nu-latn", "en-U-ca-gregory-u-nu-latn", "en-a-bbb-a-ccc", "de-CH-t-en-u-nu-latn-T-fr",
+    ])
+    func rejectsRepeatedExtensionSingletons(input: String) {
+        #expect(LocaleIdentifier(validating: input) == nil)
+        #expect(LocaleIdentifier(input) == .undetermined)
+    }
+
+    @Test(arguments: [
+        ("en-a-bbb-u-ca-gregory", "en-a-bbb-u-ca-gregory"),
+        ("en-US-U-ca-gregory-nu-latn-T-fr", "en-US-u-ca-gregory-nu-latn-t-fr"),
+        ("en-u-ca-gregory-x-private", "en-u-ca-gregory-x-private"),
+        ("en-x-a-b-c", "en-x-a-b-c"),
+        // Everything after `x` is private use, so a repeated letter there is not a singleton.
+        ("en-u-ca-gregory-x-u-nu-u", "en-u-ca-gregory-x-u-nu-u"),
+        ("en-x-x", "en-x-x"),
+    ])
+    func acceptsDistinctExtensionsAndPrivateUse(input: String, expected: String) {
+        #expect(LocaleIdentifier(validating: input)?.identifier == expected)
     }
 
     @Test func exposesSubtags() {
