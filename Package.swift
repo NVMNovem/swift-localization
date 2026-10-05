@@ -4,20 +4,40 @@
 import PackageDescription
 
 let package = Package(
-    name: "SwiftLocalization",
+    name: "swift-localization",
     products: [
-        // Products can be used to vend plugins, making them visible to other packages.
-        .plugin(
-            name: "SwiftLocalization",
-            targets: ["SwiftLocalization"]
-        ),
+        .library(name: "SwiftLocalization", targets: ["SwiftLocalization"]),
+        .plugin(name: "SwiftLocalizationPlugin", targets: ["SwiftLocalizationPlugin"]),
     ],
     targets: [
-        // Targets are the basic building blocks of a package, defining a module or a test suite.
-        // Targets can depend on other targets in this package and products from dependencies.
+        // Portable runtime: no Foundation, no JavaScriptKit.
+        .target(name: "SwiftLocalization"),
+
+        // `.xcstrings` catalog frontend. Host-side only; not part of the runtime product.
+        .target(name: "SwiftLocalizationXCStrings", dependencies: ["SwiftLocalization"]),
+
+        // Deterministic Swift emitter for the neutral catalog model.
+        .target(name: "SwiftLocalizationGeneratorCore", dependencies: ["SwiftLocalization"]),
+
+        .executableTarget(
+            name: "SwiftLocalizationGenerator",
+            dependencies: ["SwiftLocalizationXCStrings", "SwiftLocalizationGeneratorCore"]
+        ),
         .plugin(
-            name: "SwiftLocalization",
-            capability: .buildTool()
+            name: "SwiftLocalizationPlugin",
+            capability: .buildTool(),
+            dependencies: ["SwiftLocalizationGenerator"]
+        ),
+
+        .testTarget(name: "SwiftLocalizationTests", dependencies: ["SwiftLocalization"]),
+        .testTarget(
+            name: "SwiftLocalizationXCStringsTests",
+            dependencies: ["SwiftLocalization", "SwiftLocalizationXCStrings", "SwiftLocalizationGeneratorCore"]
+        ),
+        .testTarget(
+            name: "SwiftLocalizationPluginTests",
+            dependencies: ["SwiftLocalization"],
+            plugins: ["SwiftLocalizationPlugin"]
         ),
     ]
 )

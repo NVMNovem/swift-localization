@@ -1,0 +1,4 @@
+repository: https://github.com/unicode-org/cldr-json
+tag: 48.2.3
+commit: 91c267402229a59e3ef2774544f001bf959e8809
+files: cldr-json/cldr-core/supplemental/plurals.json cldr-json/cldr-core/supplemental/ordinals.json LICENSE
