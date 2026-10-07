@@ -366,10 +366,14 @@ import Testing
         struct AlwaysFew: PluralRuleProvider {
             func category(for operands: PluralOperands, type: PluralRuleType, locale: LocaleIdentifier) -> PluralCategory { .few }
         }
+        // Supplied at initialization…
+        let initialized = LocalizationResolver(catalog: resolver.catalog, pluralRules: AlwaysFew(), numberFormatter: Grouping())
+        #expect(try initialized.resolve("\(21) place", locale: "en") == "<21|en>rd place")
+        // …or replaced afterwards.
         var configured = resolver
-        configured.numberFormatter = Grouping()
+        configured.setNumberFormatter(Grouping())
         #expect(try configured.resolve("\(1200) items", locale: "en-GB") == "<1200|en-GB> items")
-        configured.pluralRules = AlwaysFew()
+        configured.setPluralRules(AlwaysFew())
         #expect(try configured.resolve("\(1) place", locale: "en") == "<1|en>rd place")
     }
 }

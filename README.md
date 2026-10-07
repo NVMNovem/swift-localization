@@ -2,7 +2,8 @@
 
 A portable localization system for Swift that works through Swift Package
 Manager without Xcode. The runtime uses only the Swift standard library, so it
-builds for Apple platforms, Linux, Windows, and WebAssembly.
+builds for Apple platforms, Linux, Windows, and WebAssembly, including
+Embedded Swift.
 
 This is an independent project. It is not an official Swift package.
 
@@ -14,6 +15,7 @@ This is an independent project. It is not an official Swift package.
 | BCP 47 normalization and truncation fallback (`LocaleIdentifier`) | Implemented |
 | CLDR 48 cardinal and ordinal plural rules, decimal operands | Implemented |
 | Catalog model, resolver, substitutions, device variations | Implemented |
+| Embedded Swift compatibility of the runtime | Implemented (compile-checked for `wasm32` Embedded) |
 | `.xcstrings` reader with non-destructive round trip | Implemented (host-side target) |
 | `SwiftLocalizationGenerator` and `SwiftLocalizationPlugin` | Implemented |
 | Foundation and JavaScript `Intl` adapters (localized digits, grouping) | Planned |
@@ -99,12 +101,37 @@ struct IntlNumbers: LocalizedNumberFormatter {
 }
 
 var resolver = LocalizationResolver(catalog: .localizable)
-resolver.numberFormatter = IntlNumbers()        // default: VerbatimNumberFormatter
-resolver.pluralRules = CLDRPluralRules()        // default; or any PluralRuleProvider
+resolver.setNumberFormatter(IntlNumbers())      // default: VerbatimNumberFormatter
+resolver.setPluralRules(CLDRPluralRules())      // default; or any PluralRuleProvider
 resolver.deviceCategory = "mac"                 // for device variations
 ```
 
+Both can also be passed to the initializer.
+
 Another catalog format only has to produce a `LocalizationCatalog`.
+
+## Embedded Swift
+
+The `SwiftLocalization` runtime target compiles for Embedded Swift, so a
+framework with an Embedded-compatible core can depend on it. To keep that
+true the runtime uses no protocol existentials (`any P`), no key paths, no
+`Mirror`, and no `String(describing:)`:
+
+- `PluralRuleProvider` and `LocalizedNumberFormatter` conformances are passed
+  to `LocalizationResolver` as concrete types (`some P`) and stored as
+  closures. That is why they are set with `setPluralRules(_:)` and
+  `setNumberFormatter(_:)` instead of being assignable properties.
+- Errors are thrown with typed `throws(LocalizationError)`.
+
+What is verified is that the runtime target builds with the
+`swift-6.3.3-RELEASE_wasm-embedded` SDK. Linking and running an Embedded
+binary has not been tested here; an Embedded application that uses `String`
+keys also has to link the Unicode data tables, as any Embedded code that
+hashes or compares strings does.
+
+The `.xcstrings` frontend, the generator, and the plugin are host-side tools
+and are not Embedded targets. Generated catalogs only use the runtime's
+public API, so they are subject to the same rules.
 
 ## The `.xcstrings` frontend
 
@@ -142,6 +169,8 @@ by the generator and is not part of the runtime product.
   localization types, so a scanner can only recognize documented patterns, and
   runtime correctness must not depend on it.
 - A resolver holds one catalog; choosing a table is up to the caller.
+- Embedded Swift support is checked by compiling the runtime only; no
+  Embedded binary is linked or run by the test suite.
 
 ## Migration
 
@@ -183,6 +212,14 @@ seconds. No target of this package applies the plugin to itself, so building
 the runtime alone, including a cross-compiled
 `swift build --swift-sdk <sdk> --target SwiftLocalization`, never builds the
 host generator.
+
+The runtime target must also keep compiling for Embedded Swift (see
+"Embedded Swift" above). This is not part of `swift test`, so run it after
+any change to `Sources/SwiftLocalization`:
+
+```console
+swiftly run swift build --swift-sdk swift-6.3.3-RELEASE_wasm-embedded --target SwiftLocalization +6.3.3
+```
 
 A Swift SDK must be used with the compiler it was built for. With swiftly, a
 toolchain is selected per command:
