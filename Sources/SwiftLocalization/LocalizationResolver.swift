@@ -58,8 +58,10 @@ public struct LocalizationError: Error, Hashable, Sendable {
 /// the requested locale.
 public struct LocalizationResolver: Sendable {
     public var catalog: LocalizationCatalog
-    public var pluralRules: any PluralRuleProvider
-    public var numberFormatter: any LocalizedNumberFormatter
+    // The services are stored as closures over concrete types, not as
+    // protocol existentials, so that the resolver compiles for Embedded Swift.
+    var pluralCategory: @Sendable (PluralOperands, PluralRuleType, LocaleIdentifier) -> PluralCategory
+    var localizedNumber: @Sendable (String, LocaleIdentifier) -> String
     /// Locales consulted after the requested locale and before the catalog's
     /// source language.
     public var fallbackLocales: [LocaleIdentifier]
@@ -70,16 +72,26 @@ public struct LocalizationResolver: Sendable {
 
     public init(
         catalog: LocalizationCatalog,
-        pluralRules: any PluralRuleProvider = CLDRPluralRules(),
-        numberFormatter: any LocalizedNumberFormatter = VerbatimNumberFormatter(),
+        pluralRules: some PluralRuleProvider = CLDRPluralRules(),
+        numberFormatter: some LocalizedNumberFormatter = VerbatimNumberFormatter(),
         fallbackLocales: [LocaleIdentifier] = [],
         deviceCategory: String? = nil
     ) {
         self.catalog = catalog
-        self.pluralRules = pluralRules
-        self.numberFormatter = numberFormatter
+        self.pluralCategory = { pluralRules.category(for: $0, type: $1, locale: $2) }
+        self.localizedNumber = { numberFormatter.string(fromDecimal: $0, locale: $1) }
         self.fallbackLocales = fallbackLocales
         self.deviceCategory = deviceCategory
+    }
+
+    /// Replaces the service that selects plural categories.
+    public mutating func setPluralRules(_ pluralRules: some PluralRuleProvider) {
+        pluralCategory = { pluralRules.category(for: $0, type: $1, locale: $2) }
+    }
+
+    /// Replaces the service that turns decimal numbers into display text.
+    public mutating func setNumberFormatter(_ numberFormatter: some LocalizedNumberFormatter) {
+        localizedNumber = { numberFormatter.string(fromDecimal: $0, locale: $1) }
     }
 
     /// Resolves `resource`, falling back to its default value.
@@ -174,7 +186,7 @@ private struct Renderer {
             guard let argumentIndex, arguments.indices.contains(argumentIndex),
                   let operands = Self.operands(of: arguments[argumentIndex], precision: precision)
             else { throw error(.missingPluralArgument) }
-            let category = resolver.pluralRules.category(for: operands, type: type, locale: pluralLocale)
+            let category = resolver.pluralCategory(operands, type, pluralLocale)
             guard let next = cases[category] ?? cases[.other] else {
                 throw error(.malformedVariation("plural variation has no \"other\" case"))
             }
@@ -263,7 +275,7 @@ private struct Renderer {
         default:
             throw error(.incompatibleArgument(position: index + 1, specifier: specifier))
         }
-        return resolver.numberFormatter.string(fromDecimal: decimal, locale: locale)
+        return resolver.localizedNumber(decimal, locale)
     }
 
     static func padded(_ integer: String, precision: Int) -> String {

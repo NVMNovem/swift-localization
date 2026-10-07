@@ -5,8 +5,8 @@
 These instructions apply to the entire `swift-localization` repository.
 
 Build a portable Swift localization system that works through Swift Package
-Manager without requiring Xcode. It must support Apple platforms, WebAssembly,
-Linux, and Windows while keeping its public model compatible in spirit with
+Manager without requiring Xcode. It must support Apple platforms, WebAssembly
+(including Embedded Swift for the runtime), Linux, and Windows while keeping its public model compatible in spirit with
 Swift localization APIs.
 
 This repository is standalone infrastructure. It must not know about, import,
@@ -28,7 +28,8 @@ and instructions are out of scope unless the user explicitly expands the task.
 The package requires SwiftPM 6.3 or later (`swift-tools-version: 6.3`) and
 currently contains:
 
-- `SwiftLocalization`: the runtime library product. Standard library only.
+- `SwiftLocalization`: the runtime library product. Standard library only,
+  and Embedded-compatible; see "Embedded Swift compatibility".
 - `SwiftLocalizationXCStrings`: the `.xcstrings` frontend, an internal
   Foundation-free target used by the generator.
 - `SwiftLocalizationGeneratorCore` and `SwiftLocalizationGenerator`: the
@@ -96,6 +97,23 @@ only to satisfy a speculative diagram.
 - Avoid Foundation in the portable core when practical, especially if it would
   pull ICU into a WebAssembly binary.
 - Never import JavaScriptKit in the portable core.
+
+### Embedded Swift compatibility
+
+Consumers with an Embedded-compatible core depend on the runtime, so the
+`SwiftLocalization` target must keep compiling for Embedded Swift. This
+applies to the runtime target only; the `.xcstrings` frontend, generator,
+plugin, and tests are host-side.
+
+- Do not store or pass protocol existentials (`any P`). Take services as
+  `some P` and store them as closures over the concrete type, as
+  `LocalizationResolver` does for plural rules and number formatting.
+- Do not use key paths, `Mirror`, `String(describing:)`, `as?` casts to
+  protocols, or untyped `throws`. Use typed throws with a concrete error.
+- Do not make generated catalog code depend on anything the runtime could
+  not offer under these rules.
+- An API that cannot be expressed this way is a design problem to solve in
+  the runtime, not a reason to drop the Embedded build.
 
 ### Catalog frontend
 
@@ -221,6 +239,14 @@ swift build
 swift test
 ```
 
+After any change to `Sources/SwiftLocalization`, also build the runtime for
+Embedded Swift. It is not covered by `swift test`, and the SDK must be used
+with its matching compiler:
+
+```console
+swiftly run swift build --swift-sdk swift-6.3.3-RELEASE_wasm-embedded --target SwiftLocalization +6.3.3
+```
+
 As targets are added, tests should cover:
 
 - literal and interpolated localization values;
@@ -232,7 +258,8 @@ As targets are added, tests should cover:
 - deterministic generator output and incremental plugin inputs/outputs;
 - parity fixtures shared by Foundation and Web `Intl` adapters where possible;
 - compilation of the core without JavaScriptKit and, where intended, without
-  Foundation.
+  Foundation;
+- compilation of the runtime target for Embedded Swift.
 
 Tests must not depend on the developer's locale, time zone, Xcode installation,
 or network access unless explicitly marked as integration tests. When matching
